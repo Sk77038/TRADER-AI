@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { SessionStatus, TradingState, TradeSignal, User, TechnicalCheck, AppConfig } from './types';
@@ -7,7 +6,7 @@ import { decode, decodeAudioData } from './services/audio-utils';
 import TradingDashboard from './components/TradingDashboard';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
-import { Power, Zap, StopCircle, RefreshCw, ChevronLeft, ChevronRight, BrainCircuit, CreditCard, ShieldCheck, Volume2, VolumeX, User as UserIcon, LogOut, Settings, Lock } from 'lucide-react';
+import { Power, Zap, StopCircle, RefreshCw, ChevronLeft, ChevronRight, BrainCircuit, ShieldCheck, Volume2, VolumeX, User as UserIcon, LogOut, Settings } from 'lucide-react';
 
 const INITIAL_CHECKLIST: TechnicalCheck[] = [
   { id: 'structure', label: 'Institutional Market Structure', status: 'pending' },
@@ -59,7 +58,6 @@ const App: React.FC = () => {
   const currentOutputTranscription = useRef<string>('');
   const lastSignalRef = useRef<TradeSignal>('WAIT');
 
-  // Load User and Global Config
   useEffect(() => {
     const savedUser = localStorage.getItem('current_user');
     if (savedUser) {
@@ -72,75 +70,114 @@ const App: React.FC = () => {
 
     const savedConfig = localStorage.getItem('global_app_config');
     if (savedConfig) {
-      const parsed = JSON.parse(savedConfig);
-      setAppConfig(parsed);
-      setIsAlarmEnabled(parsed.alarmEnabled);
+      try {
+        const parsed = JSON.parse(savedConfig);
+        setAppConfig(parsed);
+        setIsAlarmEnabled(parsed.alarmEnabled);
+      } catch(e) {}
     }
   }, []);
-
-  const isTrialExpired = useCallback(() => {
-    if (!user) return false;
-    if (user.isAdmin) return false;
-    if (user.isSubscribed) return false;
-    
-    const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-    const timeSinceSignup = Date.now() - user.signupDate;
-    return timeSinceSignup > sevenDaysInMs;
-  }, [user]);
 
   const triggerLevelAlert = useCallback(() => {
     if (!isAlarmEnabled) return;
     if (audioContextRef.current) {
-      const osc = audioContextRef.current.createOscillator();
-      const gain = audioContextRef.current.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(1200, audioContextRef.current.currentTime);
-      gain.gain.setValueAtTime(0.05, audioContextRef.current.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioContextRef.current.currentTime + 0.2);
-      osc.connect(gain);
-      gain.connect(audioContextRef.current.destination);
-      osc.start();
-      osc.stop(audioContextRef.current.currentTime + 0.2);
+      try {
+        const osc = audioContextRef.current.createOscillator();
+        const gain = audioContextRef.current.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, audioContextRef.current.currentTime);
+        gain.gain.setValueAtTime(0.05, audioContextRef.current.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioContextRef.current.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(audioContextRef.current.destination);
+        osc.start();
+        osc.stop(audioContextRef.current.currentTime + 0.2);
+      } catch (e) {}
     }
-    const utterance = new SpeechSynthesisUtterance("Price level test ho raha hai.");
-    utterance.lang = 'hi-IN';
-    window.speechSynthesis.speak(utterance);
   }, [isAlarmEnabled]);
 
   const triggerEmergencyAlarm = useCallback((signal: TradeSignal) => {
     if (signal === 'WAIT' || signal === 'CANCEL') return;
+    
     if (isAlarmEnabled) {
-      const text = signal === 'BUY' ? "Strong Buy Signal Identified! Abhi entry lein." : "Strong Sell Signal Identified! Exit or sell karein.";
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'hi-IN';
-      window.speechSynthesis.speak(utterance);
+      // Play institutional 'ring' sound
+      if (audioContextRef.current) {
+        try {
+          const osc = audioContextRef.current.createOscillator();
+          const gain = audioContextRef.current.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(800, audioContextRef.current.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1500, audioContextRef.current.currentTime + 0.1);
+          gain.gain.setValueAtTime(0.1, audioContextRef.current.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.5);
+          osc.connect(gain);
+          gain.connect(audioContextRef.current.destination);
+          osc.start();
+          osc.stop(audioContextRef.current.currentTime + 0.5);
+        } catch (e) {}
+      }
+
+      try {
+        const text = signal === 'BUY' ? "Alert! Institutional Buy Signal Identified. Go Long." : "Alert! Institutional Sell Signal Identified. Go Short.";
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 1.1;
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {}
     }
     setShowCross({ x: 30 + Math.random() * 40, y: 30 + Math.random() * 40, type: signal as 'BUY' | 'SELL' });
     setTimeout(() => setShowCross(null), 4000);
   }, [isAlarmEnabled]);
 
-  const handleSubscription = () => {
-    if (!user) { setIsAuthModalOpen(true); return; }
-    
-    const options = {
-      key: "rzp_test_placeholder", 
-      amount: 99900, 
-      currency: "INR",
-      name: "Trader AI Pro",
-      description: "Institutional Precision Access",
-      image: "https://cdn-icons-png.flaticon.com/512/3062/3062634.png",
-      handler: function (response: any) {
-        const updatedUser = { ...user, isSubscribed: true, subscriptionDate: Date.now() };
-        setUser(updatedUser);
-        localStorage.setItem('current_user', JSON.stringify(updatedUser));
-        localStorage.setItem(`user_${user.phone}`, JSON.stringify(updatedUser));
-        alert("Institutional Access Unlocked! Welcome Pro Trader.");
-      },
-      prefill: { name: user.name, contact: user.phone },
-      theme: { color: "#2563eb" }
-    };
-    const rzp = new (window as any).Razorpay(options);
-    rzp.open();
+  const handleGenerateVideo = async () => {
+    if (tradingState.isVideoGenerating) return;
+
+    if (!(window as any).aistudio?.hasSelectedApiKey || !(await (window as any).aistudio.hasSelectedApiKey())) {
+      alert("Pro Feature: Video generation requires an API key selection.");
+      await (window as any).aistudio.openSelectKey();
+    }
+
+    setTradingState(prev => ({ ...prev, isVideoGenerating: true }));
+
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error("Canvas not available");
+
+      const base64Image = canvas.toDataURL('image/png').split(',')[1];
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+      const prompt = `A cinematic technical analysis breakdown. Focus on the chart structure, highlight key order blocks and the ${tradingState.currentSignal} entry zone with a pulsating glow. Futuristic institutional trading style.`;
+
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        image: {
+          imageBytes: base64Image,
+          mimeType: 'image/png',
+        },
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: '9:16'
+        }
+      });
+
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+      }
+
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (downloadLink) {
+        const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setTradingState(prev => ({ ...prev, isVideoGenerating: false, generatedVideoUrl: url }));
+      }
+    } catch (err) {
+      console.error("Video generation failed:", err);
+      setTradingState(prev => ({ ...prev, isVideoGenerating: false }));
+    }
   };
 
   const handleAuthSuccess = (u: User) => {
@@ -157,20 +194,22 @@ const App: React.FC = () => {
   const stopScanning = useCallback(() => {
     if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
     if (countdownIntervalRef.current) window.clearInterval(countdownIntervalRef.current);
-    if (sessionRef.current) sessionRef.current.close();
-    window.speechSynthesis.cancel();
+    if (sessionRef.current) {
+        try { sessionRef.current.close(); } catch (e) {}
+    }
+    try { window.speechSynthesis.cancel(); } catch (e) {}
     setStatus(SessionStatus.IDLE);
     setTradingState(prev => ({ ...prev, isScanning: false, isAlarmActive: false, isLevelAlertActive: false }));
   }, []);
 
   const startScanning = async () => {
     if (!user) { setIsAuthModalOpen(true); return; }
-    if (isTrialExpired()) { alert("Aapka 7 din ka trial khatam ho gaya hai. Subscription lein."); return; }
-    if (!user.isSubscribed && !user.isAdmin) { handleSubscription(); return; }
 
     try {
       setStatus(SessionStatus.CONNECTING);
-      if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
       if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
 
       const totalSeconds = selectedMins * 60;
@@ -183,7 +222,7 @@ const App: React.FC = () => {
       sessionRef.current = await ai.live.connect({
         model: LIVE_MODEL,
         config: {
-          systemInstruction: TRADING_SYSTEM_INSTRUCTION + `\nADMIN SETTING: Only signal BUY/SELL if confidence is above ${appConfig.minConfidence}%.`,
+          systemInstruction: TRADING_SYSTEM_INSTRUCTION + `\nADMIN SETTING: Confidence threshold at ${appConfig.minConfidence}%.`,
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
           outputAudioTranscription: {}
@@ -251,13 +290,17 @@ const App: React.FC = () => {
                 confidence: sig !== 'WAIT' ? appConfig.minConfidence + Math.floor(Math.random() * (100 - appConfig.minConfidence)) : 0,
                 lastAnalysis: full.replace('[LEVEL_ALERT]', '').trim(),
                 isAlarmActive: sig === 'BUY' || sig === 'SELL',
-                isLevelAlertActive: up.includes('[LEVEL_ALERT]')
+                isLevelAlertActive: up.includes('[LEVEL_ALERT]'),
+                checklist: prev.checklist.map(item => ({
+                    ...item,
+                    status: up.includes(item.label.split(' ')[0].toUpperCase()) ? 'verified' : item.status
+                }))
               }));
               currentOutputTranscription.current = '';
             }
           },
-          onerror: () => setStatus(SessionStatus.ERROR),
-          onclose: () => { setStatus(SessionStatus.IDLE); setTradingState(prev => ({ ...prev, isScanning: false })); }
+          onerror: (err) => { setStatus(SessionStatus.ERROR); },
+          onclose: () => { setStatus(SessionStatus.IDLE); }
         }
       });
     } catch (err) { setStatus(SessionStatus.ERROR); }
@@ -266,7 +309,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const setup = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment', width: { ideal: 1280 } }, 
+            audio: false 
+        });
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch (err) { setStatus(SessionStatus.ERROR); }
     };
@@ -274,31 +320,10 @@ const App: React.FC = () => {
     return () => stopScanning();
   }, [stopScanning]);
 
-  const trialExpired = isTrialExpired();
-
   return (
     <div className="relative h-[100dvh] w-screen bg-[#010409] text-slate-100 flex flex-col items-center justify-center overflow-hidden">
       <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-20 brightness-50 contrast-150 z-0" />
       {tradingState.isScanning && <div className="scan-line absolute w-full top-0 z-10" />}
-
-      {/* Trial Expired Overlay */}
-      {trialExpired && (
-        <div className="absolute inset-0 z-[150] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center">
-           <div className="w-24 h-24 bg-red-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-red-500/30">
-             <Lock className="text-white" size={48} />
-           </div>
-           <h2 className="text-4xl font-black italic tracking-tighter uppercase text-white mb-4">Account Locked</h2>
-           <p className="hindi-text text-xl text-slate-400 max-w-sm mb-10">
-             Aapka 7 din ka trial period khatam ho gaya hai. Service continue karne ke liye membership unlock karein.
-           </p>
-           <button 
-             onClick={handleSubscription}
-             className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 py-6 rounded-[2rem] font-black uppercase tracking-widest text-white shadow-2xl shadow-blue-500/20 active:scale-95 transition-all"
-           >
-             Unlock Institutional Access
-           </button>
-        </div>
-      )}
 
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-50 bg-gradient-to-b from-black to-transparent">
@@ -308,7 +333,7 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-black italic flex items-center gap-2 uppercase tracking-tighter">TRADER <span className="text-blue-500">AI</span></h1>
-            <span className="text-[9px] font-black tracking-[0.4em] uppercase opacity-40">INSTITUTIONAL GRADE</span>
+            <span className="text-[9px] font-black tracking-[0.4em] uppercase opacity-40">INSTITUTIONAL GRADE PRO</span>
           </div>
         </div>
         
@@ -325,15 +350,10 @@ const App: React.FC = () => {
 
           {!user ? (
             <button onClick={() => setIsAuthModalOpen(true)} className="px-5 py-3 rounded-xl bg-blue-600 text-[10px] font-black uppercase flex items-center gap-2 hover:bg-blue-500 transition-all shadow-xl">
-              <UserIcon size={14} /> Start Scaning
+              <UserIcon size={14} /> System Access
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              {!user.isSubscribed && !user.isAdmin && (
-                <button onClick={handleSubscription} className="razorpay-btn px-4 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 text-white shadow-xl">
-                  <CreditCard size={14} /> Upgrade
-                </button>
-              )}
               <button onClick={logout} className="p-3 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-red-400 transition-all">
                 <LogOut size={20} />
               </button>
@@ -344,8 +364,8 @@ const App: React.FC = () => {
 
       <TradingDashboard 
         state={tradingState} 
-        onGenerateVideo={() => {}} 
-        onCloseVideo={() => {}}
+        onGenerateVideo={handleGenerateVideo} 
+        onCloseVideo={() => setTradingState(prev => ({ ...prev, generatedVideoUrl: null }))}
       />
 
       {/* Bottom Control Bar */}
@@ -355,7 +375,7 @@ const App: React.FC = () => {
             <button onClick={() => setSelectedMins(Math.max(1, selectedMins - 1))} className="p-3 text-slate-400 active:scale-75 transition-transform"><ChevronLeft size={28} /></button>
             <div className="flex flex-col items-center min-w-[60px]">
               <span className="text-4xl font-black font-mono leading-none tracking-tighter">{selectedMins}</span>
-              <span className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mt-1">Mins</span>
+              <span className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mt-1">Mins Scan</span>
             </div>
             <button onClick={() => setSelectedMins(Math.min(60, selectedMins + 1))} className="p-3 text-slate-400 active:scale-75 transition-transform"><ChevronRight size={28} /></button>
           </div>
@@ -363,10 +383,11 @@ const App: React.FC = () => {
 
         <button 
           onClick={tradingState.isScanning ? stopScanning : startScanning} 
-          disabled={trialExpired}
-          className={`w-full max-w-sm py-6 rounded-[2.5rem] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl transition-all active:scale-95 ${tradingState.isScanning ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20' : trialExpired ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'}`}
+          disabled={status === SessionStatus.CONNECTING}
+          className={`w-full max-w-sm py-6 rounded-[2.5rem] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl transition-all active:scale-95 ${tradingState.isScanning ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'}`}
         >
-          {tradingState.isScanning ? <><StopCircle size={28} /> Terminate System</> : <><Power className="w-5" /> Activate Scanner</>}
+          {status === SessionStatus.CONNECTING ? <RefreshCw className="animate-spin" /> : tradingState.isScanning ? <StopCircle size={28} /> : <Power className="w-5" />}
+          {status === SessionStatus.CONNECTING ? "Connecting..." : tradingState.isScanning ? "Stop Analysis" : "Analyze Chart"}
         </button>
       </div>
 
