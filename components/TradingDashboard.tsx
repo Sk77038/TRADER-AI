@@ -3,133 +3,174 @@ import React from 'react';
 import { TradeSignal, TradingState } from '../types';
 import { 
   TrendingUp, TrendingDown, Clock, AlertTriangle, 
-  ShieldCheck, Tag, Timer, Target, BarChart3, Activity
+  ShieldCheck, Activity, Target, BrainCircuit, CheckCircle2, Circle, Eye,
+  Video, Loader2, X, Download, Zap
 } from 'lucide-react';
 
 interface Props {
   state: TradingState;
+  onGenerateVideo: () => void;
+  onCloseVideo: () => void;
 }
 
-const TradingDashboard: React.FC<Props> = ({ state }) => {
-  const getSignalColor = (signal: TradeSignal) => {
+const TradingDashboard: React.FC<Props> = ({ state, onGenerateVideo, onCloseVideo }) => {
+  const isEmergency = state.currentSignal === 'BUY' || state.currentSignal === 'SELL';
+  const isLevelHit = state.isLevelAlertActive;
+
+  const getSignalUI = (signal: TradeSignal) => {
     switch (signal) {
-      case 'BUY': return 'text-emerald-400 border-emerald-500/40 bg-emerald-500/5';
-      case 'SELL': return 'text-rose-400 border-rose-500/40 bg-rose-500/5';
-      case 'WAIT': return 'text-amber-400 border-amber-500/40 bg-amber-500/5';
-      default: return 'text-slate-400 border-slate-500/40 bg-slate-500/5';
+      case 'BUY': return { color: 'text-emerald-400', border: 'border-emerald-500/40', bg: 'bg-emerald-500/10', glow: 'glow-alert-green' };
+      case 'SELL': return { color: 'text-red-400', border: 'border-red-500/40', bg: 'bg-red-500/10', glow: 'glow-alert-red' };
+      case 'WAIT': return { color: 'text-amber-400', border: 'border-amber-500/40', bg: 'bg-amber-500/5', glow: '' };
+      default: return { color: 'text-slate-400', border: 'border-slate-500/40', bg: 'bg-slate-500/5', glow: '' };
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const currentTurn = state.history[0];
+  const ui = getSignalUI(state.currentSignal);
 
   return (
-    <div className="flex flex-col gap-3 w-full max-w-lg mx-auto p-4 z-10 font-sans">
-      {/* Top HUD */}
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 p-2 rounded-xl flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-blue-400" />
-          <div className="flex flex-col">
-            <span className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Trend</span>
-            <span className={`text-[10px] font-black ${state.detectedTrend === 'BULLISH' ? 'text-emerald-400' : state.detectedTrend === 'BEARISH' ? 'text-rose-400' : 'text-slate-300'}`}>
-              {state.detectedTrend}
-            </span>
-          </div>
+    <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 z-10 font-sans max-h-[80vh] overflow-y-auto no-scrollbar pb-32">
+      {/* HUD Header */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-black/60 backdrop-blur-xl border border-white/5 p-4 rounded-2xl flex justify-between items-center shadow-lg">
+          <Activity className="w-4 h-4 text-blue-400" />
+          <span className={`text-[11px] font-black uppercase ${state.detectedTrend === 'BULLISH' ? 'text-emerald-400' : state.detectedTrend === 'BEARISH' ? 'text-red-400' : 'text-slate-500'}`}>
+            {state.detectedTrend}
+          </span>
         </div>
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 p-2 rounded-xl flex items-center gap-2">
-          <Timer className="w-3.5 h-3.5 text-amber-400" />
-          <div className="flex flex-col">
-            <span className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Session</span>
-            <span className="text-[10px] font-mono font-bold text-white">{formatTime(state.timeRemaining)}</span>
-          </div>
-        </div>
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 p-2 rounded-xl flex items-center gap-2">
-          <BarChart3 className="w-3.5 h-3.5 text-purple-400" />
-          <div className="flex flex-col">
-            <span className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Confidence</span>
-            <span className="text-[10px] font-mono font-bold text-white">{state.confidence}%</span>
-          </div>
+        <div className="bg-black/60 backdrop-blur-xl border border-white/5 p-4 rounded-2xl flex justify-between items-center shadow-lg">
+          <Eye className="w-4 h-4 text-emerald-400" />
+          <span className="text-[11px] font-black text-white">LIVE PRECISION</span>
         </div>
       </div>
 
-      {/* Main Signal Area */}
-      <div className={`relative p-6 rounded-3xl border-2 transition-all duration-700 backdrop-blur-xl ${getSignalColor(state.currentSignal)} shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}>
-        {/* Glow effect */}
-        <div className={`absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20 ${state.currentSignal === 'BUY' ? 'bg-emerald-400' : state.currentSignal === 'SELL' ? 'bg-rose-400' : 'bg-amber-400'}`} />
+      {/* Main Signal Display */}
+      <div className={`relative p-8 rounded-[3rem] border-2 transition-all duration-700 backdrop-blur-3xl overflow-hidden ${isLevelHit ? 'border-amber-500 shadow-[0_0_30px_rgba(245,158,11,0.5)] animate-pulse' : ui.border} ${ui.bg} ${ui.glow}`}>
         
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Trading Intelligence</span>
-            </div>
-            <h2 className="text-6xl font-black italic tracking-tighter leading-none">{state.currentSignal}</h2>
-          </div>
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-            {state.currentSignal === 'BUY' ? <TrendingUp size={40} /> : state.currentSignal === 'SELL' ? <TrendingDown size={40} /> : <Clock size={40} />}
-          </div>
-        </div>
-
-        {/* Levels Panel */}
-        {state.currentSignal !== 'WAIT' && (
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="bg-black/30 p-3 rounded-2xl border border-white/5">
-              <div className="flex items-center gap-2 mb-1">
-                <Target className="w-3 h-3 text-emerald-400" />
-                <span className="text-[10px] uppercase font-bold opacity-50">Target Zone</span>
-              </div>
-              <span className="text-sm font-mono font-bold">Estimated Take Profit</span>
-            </div>
-            <div className="bg-black/30 p-3 rounded-2xl border border-white/5">
-              <div className="flex items-center gap-2 mb-1">
-                <ShieldCheck className="w-3 h-3 text-rose-400" />
-                <span className="text-[10px] uppercase font-bold opacity-50">Risk Management</span>
-              </div>
-              <span className="text-sm font-mono font-bold">Stop Loss Logic</span>
-            </div>
+        {isLevelHit && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-amber-500 text-black px-4 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-xl animate-bounce">
+            <Zap size={12} fill="currentColor" /> Level Interaction Detected
           </div>
         )}
 
-        <div className="space-y-3">
-          {currentTurn?.detectedIndicators && currentTurn.detectedIndicators.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {currentTurn.detectedIndicators.map(ind => (
-                <span key={ind} className="px-2 py-0.5 rounded-md bg-white/10 text-[9px] font-bold uppercase tracking-tight border border-white/10 flex items-center gap-1">
-                  <div className="w-1 h-1 rounded-full bg-current" />
-                  {ind}
-                </span>
-              ))}
+        <div className="flex justify-between items-start mb-6 relative z-10">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`w-2 h-2 rounded-full ${isEmergency ? 'bg-red-500 animate-ping' : 'bg-slate-500'}`} />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Institutional Intel</span>
             </div>
-          )}
-          
-          <div className="p-4 rounded-2xl bg-black/40 border border-white/5 min-h-[80px]">
-             <p className="hindi-text text-sm leading-relaxed text-slate-200">
-               {state.lastAnalysis || "चार्ट को पोजीशन करें। एआई रीयल-टाइम डेटा विश्लेषण शुरू करने के लिए तैयार है।"}
-             </p>
+            <h2 className={`text-7xl font-black italic tracking-tighter leading-none ${ui.color}`}>{state.currentSignal}</h2>
+            <div className="flex items-center gap-3 mt-4">
+               <div className="h-1.5 w-32 bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-full transition-all duration-1000 ${ui.color.replace('text', 'bg')}`} 
+                       style={{ width: `${state.confidence}%` }} />
+               </div>
+               <span className={`text-[10px] font-mono font-black ${ui.color}`}>{state.confidence}% ACCURACY</span>
+            </div>
           </div>
+          <div className={`p-5 rounded-[2rem] border transition-colors bg-black/40 ${ui.border}`}>
+            {state.currentSignal === 'BUY' ? <TrendingUp size={48} className="text-emerald-400" /> : state.currentSignal === 'SELL' ? <TrendingDown size={48} className="text-red-400" /> : <Clock size={48} className="text-amber-400" />}
+          </div>
+        </div>
+
+        {/* Levels Section */}
+        <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
+           <div className={`bg-black/80 p-4 rounded-3xl border transition-all ${isLevelHit ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'border-white/5'}`}>
+              <span className="text-[9px] font-black text-emerald-400/60 uppercase block mb-1">Confirmation Resistance</span>
+              <span className="text-xs font-mono font-black text-white">{state.levels.resistance || "DETECTING..."}</span>
+           </div>
+           <div className={`bg-black/80 p-4 rounded-3xl border transition-all ${isLevelHit ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'border-white/5'}`}>
+              <span className="text-[9px] font-black text-red-400/60 uppercase block mb-1">Golden Support</span>
+              <span className="text-xs font-mono font-black text-white">{state.levels.support || "DETECTING..."}</span>
+           </div>
+        </div>
+
+        {/* Action Bar for Analysis */}
+        {(isEmergency || state.lastAnalysis) && (
+          <button 
+            onClick={onGenerateVideo}
+            disabled={state.isVideoGenerating}
+            className="w-full mb-6 py-4 rounded-3xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 transition-all flex items-center justify-center gap-3 relative z-10 group shadow-xl active:scale-95"
+          >
+            {state.isVideoGenerating ? (
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+            ) : (
+              <Video className="w-5 h-5 text-white group-hover:animate-pulse" />
+            )}
+            <span className="text-xs font-black uppercase tracking-widest text-white">
+              {state.isVideoGenerating ? "AI is rendering report..." : "Generate Analysis Video"}
+            </span>
+          </button>
+        )}
+
+        {/* Dynamic Verification List */}
+        <div className="bg-black/40 rounded-3xl p-6 border border-white/5 mb-6 relative z-10">
+           <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
+             <Target size={14} className="text-blue-500" />
+             Technical Cross-Verification
+           </h3>
+           <div className="space-y-3">
+              {state.checklist.map(item => (
+                <div key={item.id} className="flex items-center justify-between border-b border-white/5 pb-2">
+                   <span className="text-[10px] font-bold text-slate-300">{item.label}</span>
+                   {item.status === 'verified' ? (
+                     <CheckCircle2 size={16} className="text-emerald-400" />
+                   ) : (
+                     <Circle size={16} className="text-slate-700 animate-pulse" />
+                   )}
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Hindi Narrative Analysis */}
+        <div className="p-6 rounded-[2.5rem] bg-black/90 border border-white/10 shadow-2xl relative z-10">
+           <div className="flex items-center gap-2 mb-3">
+             <BrainCircuit size={14} className="text-blue-400" />
+             <span className="text-[10px] font-black uppercase text-blue-400 tracking-tighter">AI Cross-Check Summary</span>
+           </div>
+           <p className="hindi-text text-[16px] leading-relaxed text-slate-100 font-bold italic">
+             {state.lastAnalysis || "Camera ko chart ke samne rakhein... AI levels identify aur cross-verify kar raha hai."}
+           </p>
         </div>
       </div>
 
-      {/* Terminal History */}
-      <div className="mt-2">
-        <div className="flex items-center gap-2 px-1 mb-2 opacity-40">
-           <BarChart3 size={12} />
-           <span className="text-[10px] font-bold uppercase tracking-widest">Analysis Logs</span>
-        </div>
-        <div className="space-y-1.5 max-h-32 overflow-y-auto no-scrollbar mask-fade">
-          {state.history.map((turn, idx) => (
-            <div key={turn.timestamp} className={`flex items-start gap-3 p-2.5 rounded-xl border border-white/5 bg-slate-900/40 text-[10px] ${idx === 0 ? 'opacity-100' : 'opacity-40'}`}>
-              <span className="font-mono text-slate-500 whitespace-nowrap">{new Date(turn.timestamp).toLocaleTimeString([], {hour12: false, minute:'2-digit', second:'2-digit'})}</span>
-              <span className="hindi-text line-clamp-2">{turn.outputTranscription}</span>
+      {/* Video Modal */}
+      {state.generatedVideoUrl && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-slate-900 rounded-[2.5rem] border border-white/10 overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
+               <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                 <ShieldCheck className="text-blue-400" size={18} />
+                 AI Analysis Video
+               </h3>
+               <button onClick={onCloseVideo} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400">
+                 <X size={20} />
+               </button>
             </div>
-          ))}
+            <div className="relative aspect-[9/16] bg-black">
+               <video 
+                 src={state.generatedVideoUrl} 
+                 controls 
+                 autoPlay 
+                 className="w-full h-full object-cover"
+               />
+            </div>
+            <div className="p-6 flex gap-3">
+               <a 
+                 href={state.generatedVideoUrl} 
+                 download="trader-ai-report.mp4"
+                 className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl flex items-center justify-center gap-2 font-black uppercase text-[10px] tracking-widest transition-all"
+               >
+                 <Download size={14} /> Download Report
+               </a>
+            </div>
+          </div>
+          <p className="mt-6 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] text-center max-w-xs">
+            This video was synthesized using Veo generative intelligence based on your scanned chart frame.
+          </p>
         </div>
-      </div>
+      )}
     </div>
   );
 };

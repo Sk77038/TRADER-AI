@@ -4,32 +4,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Trader AI</title>
+  <title>Trader AI Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     body {
       font-family: 'Inter', 'Noto Sans Devanagari', sans-serif;
-      background-color: #020617;
+      background-color: #010409;
       color: #f8fafc;
       overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
     }
     .hindi-text { font-family: 'Noto Sans Devanagari', sans-serif; }
+    
     .scan-line {
-      height: 2px;
+      height: 4px;
       background: linear-gradient(90deg, transparent, #22c55e, transparent);
-      animation: scan 3s linear infinite;
+      box-shadow: 0 0 15px #22c55e;
+      animation: scan 4s linear infinite;
     }
+    
     @keyframes scan {
-      0% { top: 0%; }
-      100% { top: 100%; }
+      0% { top: 0%; opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
     }
-    .pulse-glow {
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+    .razorpay-btn {
+      background: linear-gradient(135deg, #2463eb 0%, #0033a0 100%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.05); }
+    .razorpay-btn:active { transform: scale(0.96); }
+
+    .glow-alert-red {
+      animation: glow-red 0.5s ease-in-out infinite alternate;
+    }
+    @keyframes glow-red {
+      from { box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+      to { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+    }
+
+    .glow-alert-green {
+      animation: glow-green 0.5s ease-in-out infinite alternate;
+    }
+    @keyframes glow-green {
+      from { box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); }
+      to { box-shadow: 0 0 30px rgba(16, 185, 129, 0.8); }
+    }
+
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Cross Mark Animation */
+    .cross-mark {
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+      animation: dash 0.8s ease-out forwards;
+    }
+    @keyframes dash {
+      to { stroke-dashoffset: 0; }
     }
   </style>
 <script type="importmap">

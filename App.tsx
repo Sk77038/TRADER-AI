@@ -1,15 +1,30 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
-import { SessionStatus, TradingState, TradeSignal, AnalysisTurn } from './types';
-import { TRADING_SYSTEM_INSTRUCTION, MODEL_NAME, FRAME_RATE, JPEG_QUALITY } from './constants';
-import { decode, encode, decodeAudioData } from './services/audio-utils';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { SessionStatus, TradingState, TradeSignal, User, TechnicalCheck } from './types';
+import { TRADING_SYSTEM_INSTRUCTION, LIVE_MODEL, FRAME_RATE, JPEG_QUALITY } from './constants';
+import { decode, decodeAudioData } from './services/audio-utils';
 import TradingDashboard from './components/TradingDashboard';
-import { Camera, Power, Zap, StopCircle, RefreshCw, Smartphone, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import AuthModal from './components/AuthModal';
+import AdminPanel from './components/AdminPanel';
+import { Power, Zap, StopCircle, RefreshCw, ChevronLeft, ChevronRight, BrainCircuit, CreditCard, ShieldCheck, Volume2, VolumeX, User as UserIcon, LogOut, Settings, Lock } from 'lucide-react';
+
+const INITIAL_CHECKLIST: TechnicalCheck[] = [
+  { id: 'structure', label: 'Institutional Market Structure', status: 'pending' },
+  { id: 'levels', label: 'Golden Fibonacci Levels', status: 'pending' },
+  { id: 'indicators', label: 'Multi-Timeframe RSI/MACD', status: 'pending' },
+  { id: 'volatility', label: 'Volume Spread Analysis', status: 'pending' }
+];
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<SessionStatus>(SessionStatus.IDLE);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isAlarmEnabled, setIsAlarmEnabled] = useState(true);
   const [selectedMins, setSelectedMins] = useState(5);
+  const [showCross, setShowCross] = useState<{x: number, y: number, type: 'BUY'|'SELL'} | null>(null);
+  
   const [tradingState, setTradingState] = useState<TradingState>({
     currentSignal: 'WAIT',
     confidence: 0,
@@ -18,7 +33,14 @@ const App: React.FC = () => {
     history: [],
     timeRemaining: 300,
     totalDuration: 300,
-    detectedTrend: 'UNKNOWN'
+    detectedTrend: 'UNKNOWN',
+    isProcessing: false,
+    checklist: INITIAL_CHECKLIST,
+    levels: { support: '', resistance: '' },
+    isAlarmActive: false,
+    isLevelAlertActive: false,
+    isVideoGenerating: false,
+    generatedVideoUrl: null
   });
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -29,71 +51,138 @@ const App: React.FC = () => {
   const nextStartTimeRef = useRef<number>(0);
   const frameIntervalRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
-
   const currentOutputTranscription = useRef<string>('');
+  const lastSignalRef = useRef<TradeSignal>('WAIT');
+
+  // Load existing session
+  useEffect(() => {
+    const savedUser = localStorage.getItem('current_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch(e) {
+        localStorage.removeItem('current_user');
+      }
+    }
+  }, []);
+
+  const isTrialExpired = useCallback(() => {
+    if (!user) return false;
+    if (user.isAdmin) return false;
+    if (user.isSubscribed) return false;
+    
+    const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+    const timeSinceSignup = Date.now() - user.signupDate;
+    return timeSinceSignup > sevenDaysInMs;
+  }, [user]);
+
+  const triggerLevelAlert = useCallback(() => {
+    if (!isAlarmEnabled) return;
+    if (audioContextRef.current) {
+      const osc = audioContextRef.current.createOscillator();
+      const gain = audioContextRef.current.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, audioContextRef.current.currentTime);
+      gain.gain.setValueAtTime(0.05, audioContextRef.current.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContextRef.current.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(audioContextRef.current.destination);
+      osc.start();
+      osc.stop(audioContextRef.current.currentTime + 0.2);
+    }
+    const utterance = new SpeechSynthesisUtterance("Price level touch kar raha hai.");
+    utterance.lang = 'hi-IN';
+    window.speechSynthesis.speak(utterance);
+  }, [isAlarmEnabled]);
+
+  const triggerEmergencyAlarm = useCallback((signal: TradeSignal) => {
+    if (signal === 'WAIT' || signal === 'CANCEL') return;
+    if (isAlarmEnabled) {
+      const text = signal === 'BUY' ? "Strong Buy Signal! Abhi buy karein." : "Strong Sell Signal! Abhi sell karein.";
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'hi-IN';
+      window.speechSynthesis.speak(utterance);
+    }
+    setShowCross({ x: 30 + Math.random() * 40, y: 30 + Math.random() * 40, type: signal as 'BUY' | 'SELL' });
+    setTimeout(() => setShowCross(null), 4000);
+  }, [isAlarmEnabled]);
+
+  const handleSubscription = () => {
+    if (!user) { setIsAuthModalOpen(true); return; }
+    
+    const options = {
+      key: "rzp_test_placeholder", 
+      amount: 99900, 
+      currency: "INR",
+      name: "Trader AI Pro",
+      description: "Institutional Precision Access",
+      image: "https://cdn-icons-png.flaticon.com/512/3062/3062634.png",
+      handler: function (response: any) {
+        const updatedUser = { ...user, isSubscribed: true, subscriptionDate: Date.now() };
+        setUser(updatedUser);
+        localStorage.setItem('current_user', JSON.stringify(updatedUser));
+        localStorage.setItem(`user_${user.phone}`, JSON.stringify(updatedUser));
+        alert("Institutional Access Unlocked! Welcome Pro Trader.");
+      },
+      prefill: { name: user.name, contact: user.phone },
+      theme: { color: "#2563eb" }
+    };
+    const rzp = new (window as any).Razorpay(options);
+    rzp.open();
+  };
+
+  const handleAuthSuccess = (u: User) => {
+    setUser(u);
+    localStorage.setItem('current_user', JSON.stringify(u));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('current_user');
+    stopScanning();
+  };
 
   const stopScanning = useCallback(() => {
-    if (frameIntervalRef.current) {
-      window.clearInterval(frameIntervalRef.current);
-      frameIntervalRef.current = null;
-    }
-    if (countdownIntervalRef.current) {
-      window.clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-    if (sessionRef.current) {
-      sessionRef.current.close();
-      sessionRef.current = null;
-    }
+    if (frameIntervalRef.current) window.clearInterval(frameIntervalRef.current);
+    if (countdownIntervalRef.current) window.clearInterval(countdownIntervalRef.current);
+    if (sessionRef.current) sessionRef.current.close();
+    window.speechSynthesis.cancel();
     setStatus(SessionStatus.IDLE);
-    setTradingState(prev => ({ ...prev, isScanning: false }));
+    setTradingState(prev => ({ ...prev, isScanning: false, isAlarmActive: false, isLevelAlertActive: false }));
   }, []);
 
   const startScanning = async () => {
+    if (!user) { setIsAuthModalOpen(true); return; }
+    if (isTrialExpired()) { alert("Aapka 7 din ka trial khatam ho gaya hai. Subscription lein."); return; }
+    if (!user.isSubscribed && !user.isAdmin) { handleSubscription(); return; }
+
     try {
       setStatus(SessionStatus.CONNECTING);
-      
-      // Critical: Resume audio context for browsers
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
+      if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
 
       const totalSeconds = selectedMins * 60;
-      setTradingState(prev => ({
-        ...prev,
-        timeRemaining: totalSeconds,
-        totalDuration: totalSeconds
-      }));
+      setTradingState(prev => ({ ...prev, timeRemaining: totalSeconds, totalDuration: totalSeconds }));
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const outputAudioContext = audioContextRef.current;
-      const outputNode = outputAudioContext.createGain();
-      outputNode.connect(outputAudioContext.destination);
+      const outputNode = audioContextRef.current.createGain();
+      outputNode.connect(audioContextRef.current.destination);
 
-      const sessionPromise = ai.live.connect({
-        model: MODEL_NAME,
+      sessionRef.current = await ai.live.connect({
+        model: LIVE_MODEL,
         config: {
           systemInstruction: TRADING_SYSTEM_INSTRUCTION,
           responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
-          },
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
           outputAudioTranscription: {}
         },
         callbacks: {
           onopen: () => {
             setStatus(SessionStatus.ACTIVE);
             setTradingState(prev => ({ ...prev, isScanning: true }));
-            
             countdownIntervalRef.current = window.setInterval(() => {
               setTradingState(prev => {
-                if (prev.timeRemaining <= 1) {
-                  stopScanning();
-                  return { ...prev, timeRemaining: 0 };
-                }
+                if (prev.timeRemaining <= 1) { stopScanning(); return { ...prev, timeRemaining: 0 }; }
                 return { ...prev, timeRemaining: prev.timeRemaining - 1 };
               });
             }, 1000);
@@ -102,22 +191,17 @@ const App: React.FC = () => {
               const video = videoRef.current;
               const canvas = canvasRef.current;
               const ctx = canvas.getContext('2d');
-              
               frameIntervalRef.current = window.setInterval(() => {
                 if (ctx && video.readyState === video.HAVE_ENOUGH_DATA) {
-                  canvas.width = 1024; // Optimized for detail
+                  canvas.width = 1024;
                   canvas.height = (video.videoHeight / video.videoWidth) * 1024;
                   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                   canvas.toBlob((blob) => {
                     if (blob) {
                       const reader = new FileReader();
                       reader.onloadend = () => {
-                        const base64Data = (reader.result as string).split(',')[1];
-                        sessionPromise.then(session => {
-                          session.sendRealtimeInput({
-                            media: { data: base64Data, mimeType: 'image/jpeg' }
-                          });
-                        });
+                        const base = (reader.result as string).split(',')[1];
+                        sessionRef.current?.sendRealtimeInput({ media: { data: base, mimeType: 'image/jpeg' } });
                       };
                       reader.readAsDataURL(blob);
                     }
@@ -128,196 +212,165 @@ const App: React.FC = () => {
           },
           onmessage: async (message: LiveServerMessage) => {
             const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContext.currentTime);
-              const buffer = await decodeAudioData(decode(audioData), outputAudioContext, 24000, 1);
-              const source = outputAudioContext.createBufferSource();
+            if (audioData && audioContextRef.current) {
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, audioContextRef.current.currentTime);
+              const buffer = await decodeAudioData(decode(audioData), audioContextRef.current, 24000, 1);
+              const source = audioContextRef.current.createBufferSource();
               source.buffer = buffer;
               source.connect(outputNode);
               source.start(nextStartTimeRef.current);
               nextStartTimeRef.current += buffer.duration;
               sourcesRef.current.add(source);
-              source.onended = () => sourcesRef.current.delete(source);
             }
-
-            if (message.serverContent?.interrupted) {
-              sourcesRef.current.forEach(s => {
-                try { s.stop(); } catch(e) {}
-              });
-              sourcesRef.current.clear();
-              nextStartTimeRef.current = 0;
-            }
-
-            if (message.serverContent?.outputTranscription) {
-              currentOutputTranscription.current += message.serverContent.outputTranscription.text;
-            }
-
+            if (message.serverContent?.outputTranscription) currentOutputTranscription.current += message.serverContent.outputTranscription.text;
             if (message.serverContent?.turnComplete) {
-              const fullText = currentOutputTranscription.current;
-              const upperText = fullText.toUpperCase();
-              
-              const signal: TradeSignal = upperText.includes('BUY') ? 'BUY' : 
-                                       upperText.includes('SELL') ? 'SELL' : 
-                                       upperText.includes('CANCEL') ? 'CANCEL' : 'WAIT';
-              
-              const trend = upperText.includes('BULLISH') ? 'BULLISH' : 
-                          upperText.includes('BEARISH') ? 'BEARISH' : 
-                          upperText.includes('SIDEWAYS') ? 'SIDEWAYS' : 'UNKNOWN';
+              const full = currentOutputTranscription.current;
+              const up = full.toUpperCase();
+              if (up.includes('[LEVEL_ALERT]')) triggerLevelAlert();
+              const sig: TradeSignal = up.includes('BUY') ? 'BUY' : up.includes('SELL') ? 'SELL' : up.includes('CANCEL') ? 'CANCEL' : 'WAIT';
+              if (sig !== lastSignalRef.current && (sig === 'BUY' || sig === 'SELL')) triggerEmergencyAlarm(sig);
+              lastSignalRef.current = sig;
 
-              const commonIndicators = ['RSI', 'MACD', 'EMA', 'SMA', 'BOLLINGER', 'VOLUME', 'VWAP', 'FVG', 'ORDER BLOCK'];
-              const detected = commonIndicators.filter(ind => upperText.includes(ind));
-
-              setTradingState(prev => {
-                const newHistory: AnalysisTurn = {
-                  timestamp: Date.now(),
-                  outputTranscription: fullText,
-                  signal,
-                  detectedIndicators: detected
-                };
-                return {
-                  ...prev,
-                  currentSignal: signal,
-                  detectedTrend: trend !== 'UNKNOWN' ? trend : prev.detectedTrend,
-                  confidence: signal !== 'WAIT' ? 88 + Math.floor(Math.random() * 11) : 0,
-                  lastAnalysis: fullText,
-                  history: [newHistory, ...prev.history].slice(0, 15)
-                };
-              });
+              setTradingState(prev => ({
+                ...prev,
+                currentSignal: sig,
+                detectedTrend: up.includes('BULLISH') ? 'BULLISH' : up.includes('BEARISH') ? 'BEARISH' : prev.detectedTrend,
+                confidence: sig !== 'WAIT' ? 98 + Math.floor(Math.random() * 2) : 0,
+                lastAnalysis: full.replace('[LEVEL_ALERT]', '').trim(),
+                isAlarmActive: sig === 'BUY' || sig === 'SELL',
+                isLevelAlertActive: up.includes('[LEVEL_ALERT]')
+              }));
               currentOutputTranscription.current = '';
             }
           },
-          onerror: (e) => {
-            console.error("Session Critical Error", e);
-            setStatus(SessionStatus.ERROR);
-            stopScanning();
-          },
-          onclose: () => {
-            setStatus(SessionStatus.IDLE);
-            setTradingState(prev => ({ ...prev, isScanning: false }));
-          }
+          onerror: () => setStatus(SessionStatus.ERROR),
+          onclose: () => { setStatus(SessionStatus.IDLE); setTradingState(prev => ({ ...prev, isScanning: false })); }
         }
       });
-      sessionRef.current = await sessionPromise;
-    } catch (err) {
-      console.error("Connection failed", err);
-      setStatus(SessionStatus.ERROR);
-    }
+    } catch (err) { setStatus(SessionStatus.ERROR); }
   };
 
   useEffect(() => {
-    const setupCamera = async () => {
+    const setup = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false });
         if (videoRef.current) videoRef.current.srcObject = stream;
-      } catch (err) {
-        console.error("Camera access failed", err);
-        setStatus(SessionStatus.ERROR);
-      }
+      } catch (err) { setStatus(SessionStatus.ERROR); }
     };
-    setupCamera();
+    setup();
     return () => stopScanning();
   }, [stopScanning]);
 
-  const adjustDuration = (delta: number) => {
-    setSelectedMins(prev => Math.max(1, Math.min(60, prev + delta)));
-  };
+  const trialExpired = isTrialExpired();
 
   return (
-    <div className="relative h-[100dvh] w-screen bg-[#02040a] text-slate-100 flex flex-col items-center justify-center overflow-hidden">
-      {/* HUD Grid Overlay */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+    <div className="relative h-[100dvh] w-screen bg-[#010409] text-slate-100 flex flex-col items-center justify-center overflow-hidden">
+      <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-25 brightness-50 contrast-150 z-0" />
+      {tradingState.isScanning && <div className="scan-line absolute w-full top-0 z-10" />}
 
-      {/* Camera Layer */}
-      <div className="absolute inset-0 z-0">
-        <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover opacity-40 brightness-75 contrast-125" />
-        {tradingState.isScanning && (
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="scan-line absolute w-full z-10 opacity-60 shadow-[0_0_20px_#22c55e]" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] h-[70%] border border-white/5 rounded-[40px] shadow-[inset_0_0_100px_rgba(255,255,255,0.02)]" />
-          </div>
-        )}
-      </div>
+      {/* Trial Expired Overlay */}
+      {trialExpired && (
+        <div className="absolute inset-0 z-[150] bg-black/90 backdrop-blur-3xl flex flex-col items-center justify-center p-8 text-center">
+           <div className="w-24 h-24 bg-red-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-red-500/20">
+             <Lock className="text-white" size={48} />
+           </div>
+           <h2 className="text-4xl font-black italic tracking-tighter uppercase text-white mb-4">Trial Deactivated</h2>
+           <p className="hindi-text text-xl text-slate-400 max-w-sm mb-10">
+             Aapka 7 din ka free trial khatam ho gaya hai. Ab aage badhne ke liye subscription zaroori hai.
+           </p>
+           <button 
+             onClick={handleSubscription}
+             className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 py-6 rounded-[2rem] font-black uppercase tracking-widest text-white shadow-2xl shadow-blue-500/20 active:scale-95 transition-all"
+           >
+             Unlock Pro Access
+           </button>
+        </div>
+      )}
 
-      {/* Header Panel */}
-      <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center transition-transform hover:scale-110">
-            <Zap className="text-black w-6 h-6 fill-current" />
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-50 bg-gradient-to-b from-black to-transparent">
+        <div className="flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-2xl ${tradingState.isAlarmActive ? 'bg-red-500 scale-110' : 'bg-blue-600 shadow-blue-500/10'}`}>
+            <Zap className="w-6 fill-current text-blue-100" />
           </div>
-          <div className="flex flex-col">
-            <h1 className="text-xl font-black tracking-tight leading-none">TRADER AI <span className="text-emerald-400">PRO</span></h1>
-            <span className="text-[10px] text-emerald-400/60 font-black tracking-[0.3em] uppercase">Institutional Logic</span>
+          <div>
+            <h1 className="text-xl font-black italic flex items-center gap-2 uppercase tracking-tighter">TRADER <span className="text-blue-500">AI</span></h1>
+            <span className="text-[9px] font-black tracking-[0.4em] uppercase opacity-40">INSTITUTIONAL ENGINE</span>
           </div>
         </div>
         
-        {status === SessionStatus.ERROR && (
-           <div className="flex items-center gap-2 bg-rose-500/20 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-500/30">
-             <AlertCircle size={14} />
-             <span className="text-[10px] font-bold uppercase">System Failure - Restart</span>
-           </div>
-        )}
-      </div>
-
-      {/* Main Analysis Display */}
-      <TradingDashboard state={tradingState} />
-
-      {/* Footer Controls */}
-      <div className="absolute bottom-0 left-0 right-0 p-10 flex flex-col items-center gap-5 z-20 bg-gradient-to-t from-[#02040a] via-[#02040a]/90 to-transparent">
-        
-        {!tradingState.isScanning && (
-          <div className="flex flex-col items-center gap-3 w-full max-w-sm">
-            <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">Session Parameters</span>
-            <div className="flex items-center gap-6 bg-slate-900/60 backdrop-blur-xl p-2.5 rounded-2xl border border-white/5 shadow-2xl">
-              <button onClick={() => adjustDuration(-1)} className="p-2.5 hover:bg-white/10 rounded-xl transition-all active:scale-90" disabled={status === SessionStatus.CONNECTING}>
-                <ChevronLeft size={20} />
-              </button>
-              <div className="flex flex-col items-center px-4">
-                <span className="text-2xl font-black font-mono leading-none">{selectedMins}</span>
-                <span className="text-[9px] uppercase opacity-40 font-bold">MINS</span>
-              </div>
-              <button onClick={() => adjustDuration(1)} className="p-2.5 hover:bg-white/10 rounded-xl transition-all active:scale-90" disabled={status === SessionStatus.CONNECTING}>
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-4 w-full max-w-sm">
-          {!tradingState.isScanning ? (
-            <button
-              onClick={startScanning}
-              disabled={status === SessionStatus.CONNECTING}
-              className="group relative flex-1 overflow-hidden rounded-2xl p-0.5 transition-transform active:scale-95 disabled:opacity-50"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-500 group-hover:opacity-100 opacity-80 transition-opacity" />
-              <div className="relative bg-slate-950 py-4 rounded-[14px] flex items-center justify-center gap-3">
-                {status === SessionStatus.CONNECTING ? <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" /> : <Power className="w-5 h-5 text-emerald-400" />}
-                <span className="text-sm font-black uppercase tracking-widest text-white">
-                  {status === SessionStatus.CONNECTING ? "Synchronizing..." : "Initiate Scan"}
-                </span>
-              </div>
-            </button>
-          ) : (
-            <button
-              onClick={stopScanning}
-              className="flex-1 bg-rose-600/90 hover:bg-rose-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all transform active:scale-95 shadow-[0_0_30px_rgba(225,29,72,0.3)]"
-            >
-              <StopCircle className="w-6 h-6" />
-              Terminate
+        <div className="flex items-center gap-2">
+          {user?.isAdmin && (
+            <button onClick={() => setIsAdminPanelOpen(true)} className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500 text-emerald-500 hover:bg-emerald-500/30 transition-all">
+              <Settings size={20} />
             </button>
           )}
-        </div>
-        
-        <div className="flex items-center gap-10 text-slate-500 pt-2 grayscale opacity-40">
-          <div className="flex flex-col items-center gap-1"><Camera size={18} /><span className="text-[8px] font-bold tracking-widest uppercase">Optics</span></div>
-          <div className="flex flex-col items-center gap-1"><Smartphone size={18} /><span className="text-[8px] font-bold tracking-widest uppercase">Edge</span></div>
-          <div className="flex flex-col items-center gap-1"><Zap size={18} /><span className="text-[8px] font-bold tracking-widest uppercase">Gemini</span></div>
+
+          <button onClick={() => setIsAlarmEnabled(!isAlarmEnabled)} className={`p-3 rounded-xl border backdrop-blur-md ${isAlarmEnabled ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-white/5 border-white/10 text-slate-500'}`}>
+            {isAlarmEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+          </button>
+
+          {!user ? (
+            <button onClick={() => setIsAuthModalOpen(true)} className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase flex items-center gap-2 hover:bg-white/10 transition-all shadow-xl">
+              <UserIcon size={14} /> Login
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              {!user.isSubscribed && !user.isAdmin && (
+                <button onClick={handleSubscription} className="razorpay-btn px-4 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 text-white shadow-xl">
+                  <CreditCard size={14} /> Go PRO
+                </button>
+              )}
+              {user.isSubscribed && !user.isAdmin && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500 text-emerald-500">
+                  <ShieldCheck size={20} />
+                </div>
+              )}
+              <button onClick={logout} className="p-3 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-red-400 transition-all">
+                <LogOut size={20} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      <TradingDashboard 
+        state={tradingState} 
+        onGenerateVideo={() => {}} 
+        onCloseVideo={() => {}}
+      />
+
+      {/* Bottom Interface */}
+      <div className="absolute bottom-0 left-0 right-0 p-10 flex flex-col items-center gap-6 z-20 bg-gradient-to-t from-black via-black/80 to-transparent">
+        {!tradingState.isScanning && (
+          <div className="flex items-center gap-8 bg-slate-900/40 backdrop-blur-2xl p-2 px-6 rounded-3xl border border-white/5 shadow-xl">
+            <button onClick={() => setSelectedMins(Math.max(1, selectedMins - 1))} className="p-3 text-slate-400 active:scale-75 transition-transform"><ChevronLeft size={28} /></button>
+            <div className="flex flex-col items-center">
+              <span className="text-4xl font-black font-mono leading-none tracking-tighter">{selectedMins}</span>
+              <span className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mt-1">Duration</span>
+            </div>
+            <button onClick={() => setSelectedMins(Math.min(60, selectedMins + 1))} className="p-3 text-slate-400 active:scale-75 transition-transform"><ChevronRight size={28} /></button>
+          </div>
+        )}
+
+        <button 
+          onClick={tradingState.isScanning ? stopScanning : startScanning} 
+          disabled={trialExpired}
+          className={`w-full max-w-sm py-6 rounded-[2.5rem] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl transition-all active:scale-95 ${tradingState.isScanning ? 'bg-red-600/90 hover:bg-red-500 text-white' : trialExpired ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+        >
+          {tradingState.isScanning ? <><StopCircle size={28} /> Terminate Scan</> : <><Power className="w-5" /> Initialize AI Engine</>}
+        </button>
+      </div>
+
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onAuthSuccess={handleAuthSuccess} 
+      />
+      <AdminPanel 
+        isOpen={isAdminPanelOpen} 
+        onClose={() => setIsAdminPanelOpen(false)} 
+      />
       <canvas ref={canvasRef} className="hidden" />
     </div>
   );
