@@ -1,6 +1,6 @@
 {
-  "name": "Trader AI - Professional Chart Scanner",
-  "description": "Real-time AI trading assistant that scans live charts using your camera, providing high-confidence BUY/SELL signals with Hindi-first explanations using Gemini Multimodal Live API.",
+  "name": "Trader AI - Institutional Intelligence Suite",
+  "description": "Professional-grade AI trading suite featuring real-time multimodal scanning, deep search-grounded analysis, and cinematic video report generation.",
   "requestFramePermissions": [
     "camera",
     "microphone"

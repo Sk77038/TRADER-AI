@@ -7,7 +7,6 @@ export interface User {
   name: string;
   isSubscribed: boolean;
   signupDate: number;
-  subscriptionDate?: number;
   isAdmin?: boolean;
 }
 
@@ -17,25 +16,23 @@ export interface AppConfig {
   minConfidence: number;
 }
 
-export interface AnalysisTurn {
-  timestamp: number;
-  inputTranscription?: string;
-  outputTranscription?: string;
-  signal?: TradeSignal;
-  reasoning?: string;
-  detectedIndicators?: string[];
-  entry?: string;
-  target?: string;
-  stopLoss?: string;
-  groundingUrls?: { title: string; uri: string }[];
+export interface GroundingChunk {
+  web?: { uri: string; title: string };
+  maps?: { uri: string; title: string };
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  thinking?: string;
+  grounding?: GroundingChunk[];
 }
 
 export enum SessionStatus {
   IDLE = 'IDLE',
   CONNECTING = 'CONNECTING',
   ACTIVE = 'ACTIVE',
-  ERROR = 'ERROR',
-  SCANNING = 'SCANNING'
+  ERROR = 'ERROR'
 }
 
 export interface TechnicalCheck {
@@ -49,15 +46,14 @@ export interface TradingState {
   confidence: number;
   lastAnalysis: string;
   isScanning: boolean;
-  history: AnalysisTurn[];
   timeRemaining: number;
   totalDuration: number;
   detectedTrend: 'BULLISH' | 'BEARISH' | 'SIDEWAYS' | 'UNKNOWN';
-  isProcessing: boolean;
   checklist: TechnicalCheck[];
   levels: { support: string; resistance: string };
   isAlarmActive: boolean;
   isLevelAlertActive: boolean;
   isVideoGenerating: boolean;
   generatedVideoUrl: string | null;
+  generatedImageUrl: string | null;
 }
